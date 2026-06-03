@@ -1,0 +1,5 @@
+{
+  "release": "parity-hotfix",
+  "timestamp_unix": 1778138757,
+  "note": "HF export parity fix validated against raw SFT checkpoint"
+}

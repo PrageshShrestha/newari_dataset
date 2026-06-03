@@ -1,0 +1,9 @@
+{
+  "bos_token_id": 32759,
+  "eos_token_id": 32759,
+  "pad_token_id": 32759,
+  "do_sample": true,
+  "use_cache": false,
+  "temperature": 0.8,
+  "top_p": 0.95
+}
