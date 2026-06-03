@@ -5,6 +5,8 @@ repo = "./tokenizer_dir"
 tok = AutoTokenizer.from_pretrained(repo, trust_remote_code=True)
 
 prompt = "नेपालको राजधानी "
-ids = tok(prompt, return_tensors="pt").input_ids.to(device)
+smthing = tok(prompt,return_tensors="pt").to(device)
+print(smthing)
+ids = smthing.input_ids
 print(prompt)
 print(ids)
