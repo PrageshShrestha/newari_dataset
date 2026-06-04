@@ -191,7 +191,7 @@ def main():
     verify_environment()
 
     print(f"[Pipeline] Loading local tokenizer from directory: {TOKENIZER_DIR}")
-    tokenizer = AutoTokenizer.from_pretrained("google/gemma-3-270m")    
+    tokenizer = AutoTokenizer.from_pretrained(TOKENIZER_DIR,trust_remote_code="True")
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
     tokenizer.padding_side = "right"
@@ -201,10 +201,8 @@ def main():
         MODEL_ID,
         torch_dtype=torch.bfloat16,
     ).to("cuda")
-    vocab_size = len(tokenizer)
-    model.resize_token_embeddings(vocab_size)
-    model.config.vocab_size = vocab_size  # ← keeps config in sync
-    print(f"[Pipeline] Embedding matrix resized to vocab size: {vocab_size}")
+    model.resize_token_embeddings(len(tokenizer))
+
     peft_config = LoraConfig(
         r=16,
         lora_alpha=32,

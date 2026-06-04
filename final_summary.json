@@ -1,0 +1,7 @@
+{
+    "total_training_time_sec": 761.0328998565674,
+    "train_loss": 3.3343574294830836,
+    "trainable_params": 3796992,
+    "total_params": 271895808,
+    "param_percentage": 1.3964878781801593
+}
