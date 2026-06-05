@@ -105,8 +105,15 @@ class ConformerASR(torch.nn.Module):
     def __init__(self, conformer, vocab_size: int, sample_rate: int = 16000):
         super().__init__()
         self.conformer = conformer
+        self.n_fft = 400
+        self.hop_length = 200
+
         self.mel = torchaudio.transforms.MelSpectrogram(
-            sample_rate=sample_rate, n_mels=80, center=False
+            sample_rate=sample_rate,
+            n_mels=80,
+            n_fft=self.n_fft,
+            hop_length=self.hop_length,
+            center=False,
         )
         self.proj = torch.nn.Linear(80, vocab_size)
 
@@ -114,15 +121,12 @@ class ConformerASR(torch.nn.Module):
         x = self.mel(wavs)                     # (B, n_mels, T)
         x = x.transpose(1, 2)                  # (B, T, n_mels)
         T = x.shape[1]
-        frame_lens = torch.clamp(
-            (wav_lens.float() / wavs.shape[1] * T).long(), min=1, max=T
-        )
-        x, out_lens = self.conformer(x, torch.full(
-    (x.size(0),),
-    x.size(1),
-    device=x.device,
-    dtype=torch.long
-))
+        frame_lens = (
+            (wav_lens - self.n_fft) // self.hop_length
+        ) + 1
+
+        frame_lens = torch.clamp(frame_lens, min=1)
+        x, out_lens = self.conformer(x, frame_lens)
         logits = self.proj(x)
         return logits, out_lens
 
@@ -273,6 +277,7 @@ def train_one_epoch(model, loader, optimizer, ctc_loss, device, epoch, writer,
         # For monitoring, just note that augmentation is enabled.
 
         log_probs = F.log_softmax(logits, dim=-1).transpose(0, 1)
+    
         loss = ctc_loss(log_probs, tokens, out_lens, tok_lens)
 
         optimizer.zero_grad()
@@ -352,7 +357,7 @@ def load_checkpoint(path: str, model, optimizer=None):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_folder', type=str, default='./datasets', help='Folder with parquet files')
-    parser.add_argument('--tokenizer_model', type=str, default='asr_spm.model', help='SentencePiece model path')
+    parser.add_argument('--tokenizer_model', type=str, default='data_asr_spm.model', help='SentencePiece model path')
     parser.add_argument('--batch_size', type=int, default=2, help='Batch size')
     parser.add_argument('--epochs', type=int, default=300, help='Number of epochs')
     parser.add_argument('--lr', type=float, default=1e-4, help='Base learning rate (if not using scheduler)')
@@ -373,7 +378,7 @@ def main():
 
     # Load tokenizer
     tokenizer = SentencePieceTokenizer(args.tokenizer_model)
-
+    print(tokenizer.sp.id_to_piece(0))
     # Load full dataset
     full_dataset = ParquetASRDataset(
         parquet_folder=args.data_folder,
@@ -408,6 +413,7 @@ def main():
         ffn_dim=256,
         num_layers=6,
         depthwise_conv_kernel_size=31,
+        dropout=0.2
     )
     model = ConformerASR(conformer, vocab_size).to(device)
 
@@ -443,8 +449,10 @@ def main():
 
         # Validate
         val_cer, val_wer = validate(model, val_loader, tokenizer, device)
+        char_acc = 1-val_cer
         writer.add_scalar('Val/CER', val_cer, epoch)
         writer.add_scalar('Val/WER', val_wer, epoch)
+        writer.add_scalar('Val/CharacterAccuracy', char_acc, epoch)
 
         # Log alignment sharpness proxy: entropy of CTC softmax distribution (sampled from a batch)
         model.eval()
@@ -456,7 +464,7 @@ def main():
             entropy = -torch.sum(probs * torch.log(probs + 1e-8), dim=-1).mean().item()
             writer.add_scalar('Alignment/SoftmaxEntropy', entropy, epoch)
 
-        print(f"Epoch {epoch+1:3d} | Train Loss: {train_metrics['train_loss']:.4f} | "
+        print(f"Epoch {epoch+1:3d} |Char Accuracy: {char_acc:.4f} | train loss: {train_metrics['train_loss']:.4f} | train CTC: {train_metrics['train_ctc_loss']:.4f} | "
               f"Val CER: {val_cer:.4f} | Val WER: {val_wer:.4f} | LR: {train_metrics['learning_rate']:.2e}")
 
         # Append to CSV
